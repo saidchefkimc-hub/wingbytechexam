@@ -1,0 +1,6 @@
+{
+  "name": "Web Development MCQ Exam",
+  "description": "Interactive proctored exam for beginner web students covering HTML, CSS, and Bootstrap basics with full-screen enforcement and seeded question shuffling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

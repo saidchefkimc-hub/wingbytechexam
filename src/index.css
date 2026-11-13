@@ -1,0 +1,244 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  background-color: #0f172a;
+}
+
+.font-mono-code {
+  font-family: 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+.select-none-strict {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.bg-animated-exam {
+  background: linear-gradient(-45deg, #1e1b4b, #311042, #042f2e, #134e4a, #451a03, #1e1b4b);
+  background-size: 400% 400%;
+  animation: gradientShift 20s ease infinite;
+}
+
+.bg-animated-student {
+  background: linear-gradient(-45deg, #1e1b4b, #311042, #2e1065, #0f172a, #172554);
+  background-size: 400% 400%;
+  animation: gradientShift 18s ease infinite;
+}
+
+/* ===================================================
+   KEYFRAME ANIMATIONS
+   =================================================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatIn {
+  0% {
+    opacity: 0;
+    transform: translateY(32px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(129, 140, 248, 0.85);
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20%, 60% {
+    transform: translateX(-8px);
+  }
+  40%, 80% {
+    transform: translateX(8px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes countdownPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 25px 8px rgba(239, 68, 68, 0.9);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  80% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes livePulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
+/* ===================================================
+   UTILITY ANIMATION CLASSES
+   =================================================== */
+.animate-fade-in-up {
+  animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-float-in {
+  animation: floatIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pop-in {
+  animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.animate-live-pulse {
+  animation: livePulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.shimmer-progress {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* ===================================================
+   HOVER & INTERACTION POLISH
+   =================================================== */
+.interactive-card {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.interactive-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.25);
+}
+
+.interactive-card-selected {
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px 2px rgba(129, 140, 248, 0.5);
+}
+
+.btn-hover-sweep {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.btn-hover-sweep:hover {
+  transform: scale(1.04);
+}
+
+.btn-hover-sweep:active {
+  transform: scale(0.98);
+}
+
+.icon-rotate-hover {
+  transition: transform 0.3s ease;
+}
+
+.icon-rotate-hover:hover {
+  transform: rotate(20deg);
+}
+
+/* ===================================================
+   ACCESSIBILITY: PREFERS REDUCED MOTION
+   =================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .bg-animated-student, .bg-animated-teacher {
+    animation: none !important;
+    background: #0f172a !important;
+  }
+}
