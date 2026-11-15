@@ -13,7 +13,8 @@ import {
   Check,
   AlertTriangle,
   FileQuestion,
-  Sparkles,
+  ClipboardCheck,
+  Copy,
 } from 'lucide-react';
 import { Question, OptionLetter } from '../types';
 import { QuestionService } from '../services/questionService';
@@ -189,6 +190,22 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({ onBackToExam }) => {
     const optMatch = q.options.some((o) => o.toLowerCase().includes(searchTerm.toLowerCase()));
     return textMatch || optMatch;
   });
+
+  const letterToIndex: Record<OptionLetter, number> = { A: 0, B: 1, C: 2, D: 3 };
+
+  const handleCopyCorrectionTable = async () => {
+    const lines = questions.map((q, idx) => {
+      const optIdx = letterToIndex[q.answerKey] ?? 0;
+      const ansText = q.options[optIdx] || '';
+      return `${idx + 1}. ${q.question} -> ${q.answerKey}) ${ansText}`;
+    });
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      showToast('Complete correction table copied to clipboard!');
+    } catch {
+      showToast('Copy failed — please select and copy from the table.');
+    }
+  };
 
   // 1. LOGIN SCREEN (Strictly protected with "saidchefki" / "12344321")
   if (!isAuthenticated) {
@@ -447,6 +464,89 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({ onBackToExam }) => {
             No questions found matching your search.
           </div>
         )}
+
+        {/* Exam Correction Answer Key Table (at the end of Teacher Admin) */}
+        <section className="pt-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 border border-white/10 rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-emerald-400 to-teal-300 flex items-center justify-center text-slate-950 shrink-0 shadow-md">
+                <ClipboardCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
+                    Exam Correction Table (Answer Key)
+                  </h2>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {questions.length} Questions
+                  </span>
+                </div>
+                <p className="text-xs text-teal-200/70">
+                  Complete reference list of every question and its official correction.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyCorrectionTable}
+              disabled={questions.length === 0}
+              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-teal-200 hover:text-white border border-white/10 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+            >
+              <Copy className="w-3.5 h-3.5 text-amber-300" />
+              <span>Copy Correction Key</span>
+            </button>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/90 shadow-xl">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-950/90 border-b border-white/10 text-teal-300 uppercase tracking-wider text-[11px]">
+                  <th className="py-3 px-4 font-bold w-14 text-center">#</th>
+                  <th className="py-3 px-4 font-bold">Question</th>
+                  <th className="py-3 px-4 font-bold w-28 text-center">Key</th>
+                  <th className="py-3 px-4 font-bold">Correction (Correct Answer)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {questions.map((q, idx) => {
+                  const optIdx = letterToIndex[q.answerKey] ?? 0;
+                  const correctText = q.options[optIdx] || '';
+                  return (
+                    <tr
+                      key={`correction-${q.id}`}
+                      className="hover:bg-white/5 transition-colors"
+                    >
+                      <td className="py-2.5 px-4 text-center font-mono font-bold text-teal-300">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-100 font-medium leading-snug">
+                        {q.question}
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold text-xs">
+                          {q.answerKey}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 font-mono font-semibold">
+                          {correctText}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {questions.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-400">
+                      No questions available in the bank.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </main>
 
       {/* Add / Edit Question Modal */}
