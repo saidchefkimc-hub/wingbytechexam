@@ -51,13 +51,22 @@ export const StudentExam: React.FC<StudentExamProps> = ({
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
-  // Fullscreen & tab-switch proctoring state with 10-second timer
+  // Fullscreen, tab-switch, & window resize proctoring state with 10-second timer
   const [isWarningActive, setIsWarningActive] = useState(false);
+  const [violationReason, setViolationReason] = useState<'fullscreen' | 'tab' | 'resize'>('fullscreen');
   const [countdown, setCountdown] = useState(10);
   const [isRetryingFullscreen, setIsRetryingFullscreen] = useState(false);
   const [muted, setMuted] = useState<boolean>(() => getAudioMuted());
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isWarningActiveRef = useRef(false);
+  const violationReasonRef = useRef<'fullscreen' | 'tab' | 'resize'>('fullscreen');
+  const isTransitioningFsRef = useRef(false);
+  const resizeMonitoringReadyRef = useRef(false);
+  const baselineSizeRef = useRef<{ width: number; height: number }>({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+  });
 
   // Start soothing background music on mount and stop cleanly on unmount
   useEffect(() => {
@@ -95,69 +104,143 @@ export const StudentExam: React.FC<StudentExamProps> = ({
   // When attempt is voided due to 10-second countdown expiry
   const triggerViolationKick = useCallback(() => {
     clearTimer();
+    isWarningActiveRef.current = false;
     setIsWarningActive(false);
+    const reasonText =
+      violationReasonRef.current === 'resize'
+        ? 'browser window resize'
+        : violationReasonRef.current === 'tab'
+        ? 'tab switch'
+        : 'full screen exit';
     onViolationKick(
-      'Attempt lost due to full screen violation (10-second timer expired). You have used 1 attempt.'
+      `Attempt lost due to ${reasonText} violation (10-second timer expired). You have used 1 attempt.`
     );
   }, [clearTimer, onViolationKick]);
 
-  // Start 10-second countdown
-  const startWarningCountdown = useCallback(() => {
-    setIsWarningActive(true);
-    setCountdown(10);
+  // Start 10-second countdown (without resetting an already-running countdown)
+  const startWarningCountdown = useCallback(
+    (reason: 'fullscreen' | 'tab' | 'resize') => {
+      violationReasonRef.current = reason;
+      setViolationReason(reason);
+
+      if (isWarningActiveRef.current) {
+        return;
+      }
+
+      isWarningActiveRef.current = true;
+      setIsWarningActive(true);
+      setCountdown(10);
+      clearTimer();
+
+      countdownTimerRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            triggerViolationKick();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    },
+    [clearTimer, triggerViolationKick]
+  );
+
+  const dismissWarning = useCallback(() => {
     clearTimer();
+    isWarningActiveRef.current = false;
+    setIsWarningActive(false);
+    setCountdown(10);
+    setIsRetryingFullscreen(false);
+  }, [clearTimer]);
 
-    countdownTimerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          triggerViolationKick();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, [clearTimer, triggerViolationKick]);
-
-  // Proctoring listeners: fullscreenchange and visibilitychange
+  // Proctoring listeners: fullscreenchange, visibilitychange, and window resize
   useEffect(() => {
+    // Allow initial fullscreen transition on exam start to settle before capturing baseline dimensions
+    const settleTimer = setTimeout(() => {
+      baselineSizeRef.current = {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+      resizeMonitoringReadyRef.current = true;
+    }, 600);
+
     const handleViolationCheck = () => {
+      if (isTransitioningFsRef.current) return;
+
       const isFs = isCurrentlyFullscreen();
       const isTabHidden = document.hidden;
 
-      if (!isFs || isTabHidden) {
-        startWarningCountdown();
+      if (isTabHidden) {
+        startWarningCountdown('tab');
+      } else if (!isFs) {
+        startWarningCountdown('fullscreen');
       } else {
-        clearTimer();
-        setIsWarningActive(false);
-        setCountdown(10);
-        setIsRetryingFullscreen(false);
+        // Re-entered fullscreen & visible: sync baseline after brief settle and dismiss warning
+        setTimeout(() => {
+          baselineSizeRef.current = {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          };
+        }, 250);
+        dismissWarning();
+      }
+    };
+
+    const handleWindowResize = () => {
+      if (!resizeMonitoringReadyRef.current || isTransitioningFsRef.current) {
+        return;
+      }
+
+      const widthDiff = Math.abs(window.innerWidth - baselineSizeRef.current.width);
+      const heightDiff = Math.abs(window.innerHeight - baselineSizeRef.current.height);
+      const hasResizedSignificantly = widthDiff > 20 || heightDiff > 20;
+
+      if (hasResizedSignificantly) {
+        startWarningCountdown('resize');
+      } else if (
+        isWarningActiveRef.current &&
+        violationReasonRef.current === 'resize' &&
+        !document.hidden
+      ) {
+        // Student restored window back to its baseline dimensions
+        dismissWarning();
       }
     };
 
     document.addEventListener('fullscreenchange', handleViolationCheck);
     document.addEventListener('webkitfullscreenchange', handleViolationCheck);
     document.addEventListener('visibilitychange', handleViolationCheck);
+    window.addEventListener('resize', handleWindowResize);
 
     return () => {
+      clearTimeout(settleTimer);
       clearTimer();
       document.removeEventListener('fullscreenchange', handleViolationCheck);
       document.removeEventListener('webkitfullscreenchange', handleViolationCheck);
       document.removeEventListener('visibilitychange', handleViolationCheck);
+      window.removeEventListener('resize', handleWindowResize);
     };
-  }, [clearTimer, startWarningCountdown]);
+  }, [clearTimer, startWarningCountdown, dismissWarning]);
 
   // Return to fullscreen button handler
   const handleReturnToFullscreen = async () => {
     setIsRetryingFullscreen(true);
+    isTransitioningFsRef.current = true;
     const success = await enterFullscreen();
-    if (success) {
-      clearTimer();
-      setIsWarningActive(false);
-      setCountdown(10);
-      setIsRetryingFullscreen(false);
-    } else {
-      setIsRetryingFullscreen(false);
-    }
+
+    setTimeout(() => {
+      isTransitioningFsRef.current = false;
+
+      if (success || isCurrentlyFullscreen()) {
+        baselineSizeRef.current = {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        };
+        dismissWarning();
+      } else {
+        setIsRetryingFullscreen(false);
+      }
+    }, 350);
   };
 
   // Select option, play tactile click sound & autosave immediately to localStorage
@@ -453,11 +536,19 @@ export const StudentExam: React.FC<StudentExamProps> = ({
             </div>
 
             <h3 className="text-xl sm:text-2xl font-extrabold text-white mb-2">
-              Full Screen Mode Exited
+              {violationReason === 'resize'
+                ? 'Browser Window Resized'
+                : violationReason === 'tab'
+                ? 'Tab Switched / Hidden'
+                : 'Full Screen Mode Exited'}
             </h3>
 
             <p className="text-red-200 text-xs sm:text-sm mb-5 leading-relaxed">
-              You left full screen mode or switched tabs. Return to full screen within{' '}
+              {violationReason === 'resize'
+                ? 'Resizing the browser window is not permitted during the exam. Restore full screen within '
+                : violationReason === 'tab'
+                ? 'Switching tabs or minimizing the window is not permitted. Return to full screen within '
+                : 'You left full screen mode. Return to full screen within '}
               <strong className="text-white underline">10 seconds</strong> or your progress will be wiped and your attempt consumed.
             </p>
 

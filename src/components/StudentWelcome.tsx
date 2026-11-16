@@ -11,7 +11,7 @@ import {
   AlertTriangle,
   RotateCcw,
 } from 'lucide-react';
-import { isFullscreenSupported } from '../utils/fullscreen';
+import { isFullscreenSupported, enterFullscreen } from '../utils/fullscreen';
 import { getStudentAttempts, MAX_ALLOWED_ATTEMPTS } from '../utils/storage';
 import { unlockAudio } from '../utils/audio';
 
@@ -78,6 +78,7 @@ export const StudentWelcome: React.FC<StudentWelcomeProps> = ({
     unlockAudio();
 
     try {
+      await enterFullscreen();
       await onStartExam(trimmed);
     } catch (err: any) {
       console.error(err);
@@ -253,7 +254,7 @@ export const StudentWelcome: React.FC<StudentWelcomeProps> = ({
                 <p className="flex items-start gap-1.5 text-[11px]">
                   <Maximize2 className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                   <span>
-                    <strong>Proctoring &amp; 10s Timer:</strong> Leaving full screen triggers a <strong>10-second</strong> countdown before attempt cancellation.
+                    <strong>Proctoring &amp; 10s Timer:</strong> Leaving full screen, switching tabs, or resizing the browser window triggers a <strong>10-second</strong> countdown before attempt cancellation.
                   </span>
                 </p>
                 <p className="flex items-start gap-1.5 text-[11px]">
