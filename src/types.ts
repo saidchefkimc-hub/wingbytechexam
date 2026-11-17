@@ -23,3 +23,8 @@ export interface ExamGradingResult {
     isCorrect: boolean;
   }[];
 }
+
+export interface StudentRecord {
+  id: string;
+  name: string;
+}

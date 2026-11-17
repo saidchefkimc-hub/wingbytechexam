@@ -67,6 +67,7 @@ export default function App() {
   const [currentAttemptNumber, setCurrentAttemptNumber] = useState<number>(1);
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<StudentAnswers>({});
+  const [examStartedAt, setExamStartedAt] = useState<number | null>(null);
   const [violationMessage, setViolationMessage] = useState<string | null>(null);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(false);
 
@@ -95,6 +96,7 @@ export default function App() {
         throw new Error('You have exhausted your allowed attempts.');
       }
 
+      const startedAt = Date.now();
       const completedCount = getStudentAttempts(name);
       const attemptNum = completedCount + 1; // 1 or 2
 
@@ -110,6 +112,7 @@ export default function App() {
       setActiveQuestions(orderedQuestions);
       setStudentName(name);
       setCurrentAttemptNumber(attemptNum);
+      setExamStartedAt(startedAt);
       setViolationMessage(null);
       setStage('in_exam');
     } catch (err: any) {
@@ -193,6 +196,7 @@ export default function App() {
               attemptNumber={currentAttemptNumber}
               questions={activeQuestions}
               initialAnswers={answers}
+              examStartedAt={examStartedAt}
               onSubmittedSuccess={handleSubmittedSuccess}
               onViolationKick={handleViolationKick}
               onQuitSurrender={handleQuitSurrender}

@@ -10,10 +10,14 @@ import {
   Award,
   AlertTriangle,
   RotateCcw,
+  Users,
+  ChevronDown,
 } from 'lucide-react';
 import { isFullscreenSupported, enterFullscreen } from '../utils/fullscreen';
 import { getStudentAttempts, MAX_ALLOWED_ATTEMPTS } from '../utils/storage';
 import { unlockAudio } from '../utils/audio';
+import { StudentRecord } from '../types';
+import { StudentService, DEFAULT_STUDENTS } from '../services/studentService';
 
 interface StudentWelcomeProps {
   onStartExam: (studentName: string) => Promise<void>;
@@ -30,12 +34,29 @@ export const StudentWelcome: React.FC<StudentWelcomeProps> = ({
   onClearViolation,
   isLoading = false,
 }) => {
+  const [students, setStudents] = useState<StudentRecord[]>(DEFAULT_STUDENTS);
+  const [selectedStudent, setSelectedStudent] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [attemptsUsed, setAttemptsUsed] = useState(0);
 
   const supported = isFullscreenSupported();
+
+  // Load live alphabetically sorted student roster
+  useEffect(() => {
+    let active = true;
+    StudentService.getStudents()
+      .then((list) => {
+        if (active) setStudents(list);
+      })
+      .catch((err) => {
+        console.error('Failed to load student list:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Check student's attempt count as they type their name
   useEffect(() => {
@@ -63,7 +84,7 @@ export const StudentWelcome: React.FC<StudentWelcomeProps> = ({
     }
 
     if (trimmed.length < 2) {
-      setError('Please enter your full name (at least 2 characters).');
+      setError('Please choose your name from the dropdown list.');
       return;
     }
 
@@ -176,6 +197,42 @@ export const StudentWelcome: React.FC<StudentWelcomeProps> = ({
             )}
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
+              {/* Dropdown: Select Student Name */}
+              <div>
+                <label
+                  htmlFor="student-name-select"
+                  className="flex items-center gap-1.5 text-xs font-bold text-blue-200 uppercase tracking-wider mb-1"
+                >
+                  <Users className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Select Student</span>
+                </label>
+
+                <div className="relative">
+                  <select
+                    id="student-name-select"
+                    value={selectedStudent}
+                    onChange={(e) => {
+                      const chosen = e.target.value;
+                      setSelectedStudent(chosen);
+                      setName(chosen);
+                      if (error) setError(null);
+                    }}
+                    disabled={isStarting || isLoading}
+                    className="w-full appearance-none px-3.5 py-2.5 pr-9 rounded-xl bg-white/10 border border-white/20 focus:border-amber-400 focus:bg-white/15 focus:ring-3 focus:ring-amber-500/20 transition-all text-white text-sm font-semibold outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="" disabled className="bg-slate-900 text-slate-400">
+                      -- Choose your name --
+                    </option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.name} className="bg-slate-900 text-white">
+                        {student.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-amber-300 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+
               {/* Input: Candidate Full Name */}
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -205,20 +262,27 @@ export const StudentWelcome: React.FC<StudentWelcomeProps> = ({
                   )}
                 </div>
 
-                <input
-                  id="student-full-name"
-                  type="text"
-                  autoFocus
-                  required
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    if (error) setError(null);
-                  }}
-                  placeholder="Enter your full name"
-                  disabled={isStarting || isLoading}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/20 focus:border-amber-400 focus:bg-white/15 focus:ring-3 focus:ring-amber-500/20 transition-all text-white placeholder-slate-400 text-sm font-semibold outline-none"
-                />
+                <div className="relative">
+                  <input
+                    id="student-full-name"
+                    type="text"
+                    value={name}
+                    readOnly
+                    disabled
+                    placeholder="Choose your name from the dropdown above"
+                    className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border transition-all text-sm font-semibold outline-none cursor-not-allowed ${
+                      name
+                        ? 'bg-white/5 border-emerald-400/40 text-emerald-200 opacity-90'
+                        : 'bg-white/5 border-white/15 text-slate-400 placeholder-slate-400 opacity-75'
+                    }`}
+                  />
+                  <Lock
+                    className={`w-4 h-4 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 ${
+                      name ? 'text-emerald-400' : 'text-slate-400'
+                    }`}
+                    aria-label="Input locked"
+                  />
+                </div>
               </div>
 
               {/* Error / Exhausted Message */}

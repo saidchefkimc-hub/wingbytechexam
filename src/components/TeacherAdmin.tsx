@@ -15,9 +15,12 @@ import {
   FileQuestion,
   ClipboardCheck,
   Copy,
+  Users,
+  UserPlus,
 } from 'lucide-react';
-import { Question, OptionLetter } from '../types';
+import { Question, OptionLetter, StudentRecord } from '../types';
 import { QuestionService } from '../services/questionService';
+import { StudentService } from '../services/studentService';
 import { isFirebaseConfigured } from '../firebase/config';
 
 interface TeacherAdminProps {
@@ -49,9 +52,18 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({ onBackToExam }) => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Student Roster CRUD state (alphabetically sorted)
+  const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [newStudentName, setNewStudentName] = useState('');
+  const [studentError, setStudentError] = useState<string | null>(null);
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editingStudentName, setEditingStudentName] = useState('');
+  const [studentDeleteConfirmId, setStudentDeleteConfirmId] = useState<string | null>(null);
+
   const isRealFirebase = isFirebaseConfigured();
 
-  // Load questions when authenticated
+  // Load questions & students when authenticated
   const loadQuestions = async () => {
     setIsLoading(true);
     try {
@@ -64,9 +76,19 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({ onBackToExam }) => {
     }
   };
 
+  const loadStudents = async () => {
+    try {
+      const list = await StudentService.getStudents();
+      setStudents(list);
+    } catch (err) {
+      console.error('Error loading students:', err);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       loadQuestions();
+      loadStudents();
     }
   }, [isAuthenticated]);
 
@@ -204,6 +226,68 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({ onBackToExam }) => {
       showToast('Complete correction table copied to clipboard!');
     } catch {
       showToast('Copy failed — please select and copy from the table.');
+    }
+  };
+
+  // Add student handler
+  const handleAddStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newStudentName.trim();
+    if (!trimmed) {
+      setStudentError('Please enter a student name.');
+      return;
+    }
+
+    setIsSavingStudent(true);
+    setStudentError(null);
+    try {
+      await StudentService.addStudent(trimmed);
+      await loadStudents();
+      setNewStudentName('');
+      showToast(`Added "${trimmed}" to student roster (sorted alphabetically).`);
+    } catch (err: any) {
+      setStudentError(err?.message || 'Failed to add student.');
+    } finally {
+      setIsSavingStudent(false);
+    }
+  };
+
+  // Save modified student name
+  const handleSaveStudentEdit = async (id: string) => {
+    const trimmed = editingStudentName.trim();
+    if (!trimmed) {
+      setStudentError('Student name cannot be empty.');
+      return;
+    }
+
+    setIsSavingStudent(true);
+    setStudentError(null);
+    try {
+      await StudentService.updateStudent(id, trimmed);
+      await loadStudents();
+      setEditingStudentId(null);
+      setEditingStudentName('');
+      showToast(`Updated student to "${trimmed}" (sorted alphabetically).`);
+    } catch (err: any) {
+      setStudentError(err?.message || 'Failed to update student.');
+    } finally {
+      setIsSavingStudent(false);
+    }
+  };
+
+  // Delete student
+  const handleDeleteStudent = async (id: string) => {
+    setIsSavingStudent(true);
+    setStudentError(null);
+    try {
+      await StudentService.deleteStudent(id);
+      await loadStudents();
+      setStudentDeleteConfirmId(null);
+      showToast('Student removed from roster.');
+    } catch (err: any) {
+      setStudentError(err?.message || 'Failed to delete student.');
+    } finally {
+      setIsSavingStudent(false);
     }
   };
 
@@ -392,6 +476,187 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({ onBackToExam }) => {
             <span>{toastMessage}</span>
           </div>
         )}
+
+        {/* Student Roster Management Section (Add / Modify / Remove Alphabetically) */}
+        <section className="bg-slate-900/90 border border-white/10 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/10 pb-3.5">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-500 via-indigo-400 to-teal-300 flex items-center justify-center text-slate-950 shrink-0 shadow-md">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
+                    Student Roster Management
+                  </h2>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                    {students.length} Students (A–Z)
+                  </span>
+                </div>
+                <p className="text-xs text-teal-200/70">
+                  Add or modify student names shown in the candidate dropdown (automatically sorted alphabetically).
+                </p>
+              </div>
+            </div>
+
+            {/* Add Student Inline Form */}
+            <form onSubmit={handleAddStudent} className="flex items-center gap-2 w-full md:w-auto">
+              <input
+                type="text"
+                value={newStudentName}
+                onChange={(e) => {
+                  setNewStudentName(e.target.value);
+                  if (studentError) setStudentError(null);
+                }}
+                placeholder="New student full name..."
+                disabled={isSavingStudent}
+                className="flex-1 md:w-56 px-3 py-2 rounded-xl bg-slate-950/80 border border-white/15 focus:border-teal-400 text-white placeholder-slate-400 text-xs outline-none"
+              />
+              <button
+                type="submit"
+                disabled={isSavingStudent}
+                className="px-3.5 py-2 rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-300 hover:from-blue-300 hover:to-emerald-200 shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add Student</span>
+              </button>
+            </form>
+          </div>
+
+          {studentError && (
+            <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{studentError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStudentError(null)}
+                className="text-rose-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Alphabetical Student Roster Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {students.map((stu, idx) => {
+              const isEditing = editingStudentId === stu.id;
+              const isConfirmingDelete = studentDeleteConfirmId === stu.id;
+
+              return (
+                <div
+                  key={stu.id}
+                  className="px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10 hover:border-teal-500/40 flex items-center justify-between gap-2 transition"
+                >
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <input
+                        type="text"
+                        value={editingStudentName}
+                        onChange={(e) => setEditingStudentName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveStudentEdit(stu.id);
+                          } else if (e.key === 'Escape') {
+                            setEditingStudentId(null);
+                            setEditingStudentName('');
+                          }
+                        }}
+                        autoFocus
+                        disabled={isSavingStudent}
+                        className="flex-1 min-w-0 px-2.5 py-1 rounded-lg bg-slate-900 border border-teal-400 text-white text-xs font-semibold outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveStudentEdit(stu.id)}
+                        disabled={isSavingStudent}
+                        className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 cursor-pointer"
+                        title="Save student name"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStudentId(null);
+                          setEditingStudentName('');
+                        }}
+                        className="p-1.5 rounded-lg bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : isConfirmingDelete ? (
+                    <div className="flex items-center justify-between gap-2 flex-1 text-xs">
+                      <span className="text-rose-300 font-semibold truncate">
+                        Remove {stu.name}?
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStudent(stu.id)}
+                          disabled={isSavingStudent}
+                          className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStudentDeleteConfirmId(null)}
+                          className="px-2 py-1 rounded-lg bg-white/10 text-slate-300 hover:text-white text-[11px] cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px] font-bold flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="text-xs font-semibold text-white truncate">
+                          {stu.name}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingStudentId(stu.id);
+                            setEditingStudentName(stu.name);
+                            setStudentDeleteConfirmId(null);
+                            setStudentError(null);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-teal-300 hover:bg-white/10 transition cursor-pointer"
+                          title="Modify student name"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStudentDeleteConfirmId(stu.id);
+                            setEditingStudentId(null);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/10 transition cursor-pointer"
+                          title="Remove student"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Questions Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

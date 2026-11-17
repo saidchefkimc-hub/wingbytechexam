@@ -178,6 +178,19 @@ body {
   animation: livePulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes timerBeat {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+.animate-timer-beat {
+  animation: timerBeat 2s ease-in-out infinite;
+}
+
 .shimmer-progress {
   background: linear-gradient(
     90deg,

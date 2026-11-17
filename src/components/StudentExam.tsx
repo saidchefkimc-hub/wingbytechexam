@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Volume2,
   VolumeX,
+  Clock,
 } from 'lucide-react';
 import { Question, OptionLetter, StudentAnswers } from '../types';
 import { isCurrentlyFullscreen, enterFullscreen } from '../utils/fullscreen';
@@ -26,11 +27,67 @@ import {
   getAudioMuted,
 } from '../utils/audio';
 
+const TOTAL_EXAM_SECONDS = 61 * 60; // 61 minutes = 3660 seconds
+
+function formatExamTimer(totalSeconds: number): string {
+  const clamped = Math.max(0, totalSeconds);
+  const mins = Math.floor(clamped / 60);
+  const secs = clamped % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function getTimerColorTheme(secondsLeft: number) {
+  if (secondsLeft > 45 * 60) {
+    return {
+      badge:
+        'border-emerald-400/60 bg-gradient-to-r from-emerald-500/25 via-teal-500/20 to-cyan-500/25 text-emerald-200 shadow-[0_0_16px_rgba(16,185,129,0.3)]',
+      icon: 'text-emerald-300',
+      dot: 'bg-emerald-400',
+      bar: 'from-emerald-400 to-teal-300',
+    };
+  }
+  if (secondsLeft > 30 * 60) {
+    return {
+      badge:
+        'border-cyan-400/60 bg-gradient-to-r from-cyan-500/25 via-sky-500/20 to-blue-500/25 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.32)]',
+      icon: 'text-cyan-300',
+      dot: 'bg-cyan-400',
+      bar: 'from-cyan-400 to-blue-400',
+    };
+  }
+  if (secondsLeft > 15 * 60) {
+    return {
+      badge:
+        'border-purple-400/60 bg-gradient-to-r from-indigo-500/25 via-purple-500/25 to-fuchsia-500/20 text-purple-200 shadow-[0_0_16px_rgba(168,85,247,0.35)]',
+      icon: 'text-purple-300',
+      dot: 'bg-purple-400',
+      bar: 'from-indigo-400 to-fuchsia-400',
+    };
+  }
+  if (secondsLeft > 5 * 60) {
+    return {
+      badge:
+        'border-amber-400/75 bg-gradient-to-r from-amber-500/30 via-orange-500/25 to-yellow-500/25 text-amber-200 shadow-[0_0_18px_rgba(245,158,11,0.4)]',
+      icon: 'text-amber-300',
+      dot: 'bg-amber-400',
+      bar: 'from-amber-400 to-orange-400',
+    };
+  }
+  return {
+    badge:
+      'border-rose-400 bg-gradient-to-r from-rose-600/40 via-red-500/35 to-orange-500/30 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.55)] animate-pulse',
+    icon: 'text-rose-200',
+    dot: 'bg-rose-400',
+    bar: 'from-rose-400 to-red-400',
+  };
+}
+
 interface StudentExamProps {
   studentName: string;
   attemptNumber: number; // 1 or 2
   questions: Question[];
   initialAnswers: StudentAnswers;
+  examStartedAt?: number | null;
   onSubmittedSuccess: () => void;
   onViolationKick: (message: string) => void;
   onQuitSurrender: () => void;
@@ -41,6 +98,7 @@ export const StudentExam: React.FC<StudentExamProps> = ({
   attemptNumber,
   questions,
   initialAnswers,
+  examStartedAt,
   onSubmittedSuccess,
   onViolationKick,
   onQuitSurrender,
@@ -50,6 +108,15 @@ export const StudentExam: React.FC<StudentExamProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+
+  // 61-minute exam timer state
+  const examStartMsRef = useRef<number>(examStartedAt ?? Date.now());
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(() => {
+    const elapsed = Math.floor((Date.now() - (examStartedAt ?? Date.now())) / 1000);
+    return Math.max(0, TOTAL_EXAM_SECONDS - Math.max(0, elapsed));
+  });
+  const answersRef = useRef<StudentAnswers>(answers);
+  const hasSubmittedRef = useRef(false);
 
   // Fullscreen, tab-switch, & window resize proctoring state with 10-second timer
   const [isWarningActive, setIsWarningActive] = useState(false);
@@ -67,6 +134,10 @@ export const StudentExam: React.FC<StudentExamProps> = ({
     width: typeof window !== 'undefined' ? window.innerWidth : 0,
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
   });
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   // Start soothing background music on mount and stop cleanly on unmount
   useEffect(() => {
@@ -269,31 +340,63 @@ export const StudentExam: React.FC<StudentExamProps> = ({
   };
 
   // Submit Exam handler: evaluate score, send Web3Forms email, clear localStorage answers
+  const submitExamWithAnswers = useCallback(
+    async (answersSnapshot: StudentAnswers) => {
+      if (hasSubmittedRef.current) return;
+      hasSubmittedRef.current = true;
+      playSubmitSuccessSound();
+      setIsSubmitting(true);
+
+      try {
+        // 1. Grade the student exam
+        const gradingResult = gradeStudentExam(studentName, questions, answersSnapshot);
+
+        // 2. Dispatch email payload to teacher via Web3Forms API
+        await sendExamViaWeb3Forms(gradingResult);
+
+        // 3. Complete and advance to completion screen
+        setShowSubmitConfirm(false);
+        onSubmittedSuccess();
+      } catch (err) {
+        console.error('Submission error:', err);
+        // Still allow completion so student is not stuck
+        setShowSubmitConfirm(false);
+        onSubmittedSuccess();
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [studentName, questions, onSubmittedSuccess]
+  );
+
   const handleFinalSubmit = async () => {
-    playSubmitSuccessSound();
-    setIsSubmitting(true);
-
-    try {
-      // 1. Grade the student exam
-      const gradingResult = gradeStudentExam(studentName, questions, answers);
-
-      // 2. Dispatch email payload to teacher via Web3Forms API
-      await sendExamViaWeb3Forms(gradingResult);
-
-      // 3. Complete and advance to completion screen
-      setShowSubmitConfirm(false);
-      onSubmittedSuccess();
-    } catch (err) {
-      console.error('Submission error:', err);
-      // Still allow completion so student is not stuck
-      setShowSubmitConfirm(false);
-      onSubmittedSuccess();
-    } finally {
-      setIsSubmitting(false);
-    }
+    await submitExamWithAnswers(answers);
   };
 
+  // Launch 61-minute countdown immediately once the exam starts
+  useEffect(() => {
+    if (examStartedAt) {
+      examStartMsRef.current = examStartedAt;
+    }
+
+    const updateCountdown = () => {
+      const elapsedSeconds = Math.floor((Date.now() - examStartMsRef.current) / 1000);
+      const nextRemaining = Math.max(0, TOTAL_EXAM_SECONDS - Math.max(0, elapsedSeconds));
+      setRemainingSeconds(nextRemaining);
+
+      if (nextRemaining === 0 && !hasSubmittedRef.current) {
+        submitExamWithAnswers(answersRef.current);
+      }
+    };
+
+    updateCountdown();
+    const timerInterval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timerInterval);
+  }, [examStartedAt, submitExamWithAnswers]);
+
   const progressPercent = totalQuestions > 0 ? ((currentIndex + 1) / totalQuestions) * 100 : 0;
+  const timerProgressPercent = Math.max(0, Math.min(100, (remainingSeconds / TOTAL_EXAM_SECONDS) * 100));
+  const timerTheme = getTimerColorTheme(remainingSeconds);
   const optionLetters: OptionLetter[] = ['A', 'B', 'C', 'D'];
 
   if (!currentQuestion) {
@@ -333,15 +436,41 @@ export const StudentExam: React.FC<StudentExamProps> = ({
             </div>
           </div>
 
-          {/* Right Controls: Fullscreen status, Progress badge & Quit button */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Right Controls: 61-Min Animated Timer, Fullscreen status, Progress badge & Quit button */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* 61-Minute Animated Color-Changing Exam Timer */}
+            <div
+              aria-label={`Exam time remaining ${formatExamTimer(remainingSeconds)}`}
+              className={`relative overflow-hidden px-2.5 sm:px-3 py-1 rounded-xl border transition-all duration-700 flex items-center gap-1.5 sm:gap-2 animate-timer-beat ${timerTheme.badge}`}
+            >
+              <span className="absolute inset-0 shimmer-progress pointer-events-none opacity-60" />
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${timerTheme.dot}`}
+                />
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${timerTheme.dot}`} />
+              </span>
+              <Clock className={`w-3.5 h-3.5 shrink-0 ${timerTheme.icon}`} />
+              <div className="flex flex-col items-start leading-none">
+                <span className="font-mono font-black text-xs sm:text-[13px] tracking-wider tabular-nums">
+                  {formatExamTimer(remainingSeconds)}
+                </span>
+                <span className="w-full h-0.5 mt-0.5 rounded-full bg-white/15 overflow-hidden">
+                  <span
+                    className={`block h-full bg-gradient-to-r transition-all duration-1000 ${timerTheme.bar}`}
+                    style={{ width: `${timerProgressPercent}%` }}
+                  />
+                </span>
+              </div>
+            </div>
+
             <div className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
               <span>Full Screen</span>
             </div>
 
-            <div className="px-2.5 py-0.5 rounded-lg bg-white/10 border border-white/10 text-[11px] font-bold text-amber-300">
-              {answeredCount} / {totalQuestions} Answered
+            <div className="px-2 sm:px-2.5 py-0.5 rounded-lg bg-white/10 border border-white/10 text-[11px] font-bold text-amber-300">
+              {answeredCount} / {totalQuestions} <span className="hidden sm:inline">Answered</span>
             </div>
 
             {/* Soothing Music & Click Sound Toggle */}
